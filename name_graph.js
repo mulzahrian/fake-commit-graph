@@ -19,9 +19,7 @@ const PRIVATE_REPO = process.env.PRIVATE_REPO === "true";
 const GRAPH_YEAR = Number(process.env.GRAPH_YEAR?.trim());
 const GRAPH_NAME = (process.env.GRAPH_NAME || "").trim().toUpperCase();
 const COMMITS_PER_PIXEL = Number(process.env.GRAPH_COMMITS_PER_PIXEL?.trim() || 2);
-const REPO_NAME =
-  process.env.GRAPH_REPO_NAME?.trim() ||
-  `${GRAPH_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "name"}-${GRAPH_YEAR}`;
+const REPO_NAME = process.env.REPO_NAME?.trim() || "contribution-graph";
 
 const COMMIT_START_HOUR = 12;
 const COMMIT_TIMEZONE = "+07:00";
@@ -160,6 +158,33 @@ function git(args, cwd, extraEnv = {}, quiet = false) {
   });
 }
 
+// Returns the repository's default branch if it already exists, or null if it doesn't.
+async function getExistingRepoBranch() {
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${REPO_NAME}`, {
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "fake-date-repo",
+    },
+  });
+  if (res.status === 404) return null;
+  const body = await res.json().catch(() => ({}));
+  if (res.status !== 200) {
+    throw new Error(`Failed to check repository (${res.status}): ${body.message}`);
+  }
+  return body.default_branch || "main";
+}
+
+async function ensureRepo() {
+  const branch = await getExistingRepoBranch();
+  if (branch) {
+    console.log(`📦 Repository '${REPO_NAME}' already exists, adding commits to '${branch}'`);
+    return branch;
+  }
+  await createRepo();
+  return "main";
+}
+
 async function createRepo() {
   console.log(`📦 Creating repository '${REPO_NAME}'...`);
   const res = await fetch("https://api.github.com/user/repos", {
@@ -185,7 +210,7 @@ async function createRepo() {
   throw new Error(`Failed to create repository (${res.status}): ${body.message}${detail ? ` - ${detail}` : ""}`);
 }
 
-function commitAndPush(dates) {
+function commitAndPush(dates, branch) {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "name-graph-"));
   const remoteUrl = `https://github.com/${GITHUB_USER}/${REPO_NAME}.git`;
   // The token is sent as a one-off header and never written to .git/config.
@@ -197,6 +222,17 @@ function commitAndPush(dates) {
     git(["config", "user.name", GITHUB_USER], workDir);
     git(["config", "user.email", GITHUB_EMAIL], workDir);
     git(["config", "core.autocrlf", "false"], workDir);
+    git(["remote", "add", "origin", remoteUrl], workDir);
+
+    // Build on top of the existing history so the push is a fast-forward.
+    // Fetching fails for an empty repository, in which case we start from scratch.
+    try {
+      git(["-c", `http.extraHeader=${authHeader}`, "fetch", "-q", "origin", branch], workDir, {}, true);
+      git(["checkout", "-q", "-B", branch, "FETCH_HEAD"], workDir);
+      console.log(`📥 Fetched existing history from '${branch}'`);
+    } catch {
+      git(["symbolic-ref", "HEAD", `refs/heads/${branch}`], workDir);
+    }
 
     console.log(`🕒 Creating ${total} commits to draw "${GRAPH_NAME}" in ${GRAPH_YEAR}...`);
     let count = 0;
@@ -215,9 +251,8 @@ function commitAndPush(dates) {
     }
     process.stdout.write("\n");
 
-    git(["remote", "add", "origin", remoteUrl], workDir);
     console.log("🚀 Pushing to GitHub...");
-    git(["-c", `http.extraHeader=${authHeader}`, "push", "-u", "origin", "main"], workDir);
+    git(["-c", `http.extraHeader=${authHeader}`, "push", "-u", "origin", branch], workDir);
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
   }
@@ -230,11 +265,14 @@ function commitAndPush(dates) {
     printPreview(dates);
     if (PREVIEW) return;
 
-    await createRepo();
-    commitAndPush(dates);
+    const branch = await ensureRepo();
+    commitAndPush(dates, branch);
     console.log(`🎉 Done! View it at: https://github.com/${GITHUB_USER}/${REPO_NAME}`);
   } catch (err) {
-    console.error(`❌ ${err.message}`);
+    console.error(`❌ ${err.message}${err.cause ? ` (${err.cause.code || err.cause.message})` : ""}`);
+    if (err.message === "fetch failed") {
+      console.error("   Could not reach api.github.com. Try: node --use-system-ca name_graph.js");
+    }
     process.exit(1);
   }
 })();

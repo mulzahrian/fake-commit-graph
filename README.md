@@ -129,11 +129,12 @@ Add these to `.env`:
 GRAPH_YEAR=2014
 GRAPH_NAME=HELLO
 # Optional
-GRAPH_REPO_NAME=hello-2014     # default: <name>-<year>
 GRAPH_COMMITS_PER_PIXEL=2      # default: 2
 ```
 
 `GRAPH_NAME` can be up to 8 characters long and may only contain `A-Z`, `0-9`, and spaces. Lowercase letters are converted to uppercase.
+
+The commits go to the repository named in `REPO_NAME`. If it doesn't exist yet, it's created. If it already exists, the script fetches its default branch and adds the new commits on top of the existing history, so nothing is overwritten. Afterwards, run `git pull` in any local clone of that repository.
 
 Preview the result in the terminal first (no repository is created):
 
@@ -146,6 +147,8 @@ Then run it for real:
 ```bash
 node name_graph.js
 ```
+
+If you get `fetch failed`, use `node --use-system-ca name_graph.js`.
 
 > Use a year with no other contributions so the name stands out clearly.
 
