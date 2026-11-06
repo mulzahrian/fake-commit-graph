@@ -84,7 +84,7 @@ node index.js
 if not working using this 
 
 ```bash
-node --use-system-ca index.js
+ node --use-system-ca index.js
 ```
 
 Output when it succeeds:
