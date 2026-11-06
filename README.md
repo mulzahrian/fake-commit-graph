@@ -119,6 +119,36 @@ const COMMIT_TIMEZONE = "+07:00";  // time zone offset
 
 Commits are spaced one minute apart, so keep `COMMIT_COUNT` at 60 or less. Keep the start hour around midday so the commits don't shift to a different day in other time zones.
 
+## Draw a name on the graph (`name_graph.js`)
+
+[`name_graph.js`](name_graph.js) writes a name in a 5×7 pixel font on the contribution graph for the year you choose. Each "pixel" is one day (columns are weeks, rows are Sunday to Saturday), and every lit day gets several commits so it shows up dark green.
+
+Add these to `.env`:
+
+```env
+GRAPH_YEAR=2014
+GRAPH_NAME=HELLO
+# Optional
+GRAPH_REPO_NAME=hello-2014     # default: <name>-<year>
+GRAPH_COMMITS_PER_PIXEL=2      # default: 2
+```
+
+`GRAPH_NAME` can be up to 8 characters long and may only contain `A-Z`, `0-9`, and spaces. Lowercase letters are converted to uppercase.
+
+Preview the result in the terminal first (no repository is created):
+
+```bash
+node name_graph.js --preview
+```
+
+Then run it for real:
+
+```bash
+node name_graph.js
+```
+
+> Use a year with no other contributions so the name stands out clearly.
+
 ## Troubleshooting
 
 | Message | Cause |
